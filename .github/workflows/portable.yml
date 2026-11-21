@@ -92,8 +92,12 @@ jobs:
           Everything else (QUIC, P2P direct path, hardware encoding, pairing)
           is identical to the installed release.
 
-          The relay server address + certificate fingerprint are compiled in;
-          they can be changed later in config.toml next to the exe.
+          CONFIGURATION (required before first use):
+          Run airhand.exe once to generate config.toml next to it, then edit:
+            server = "your-relay.example.com:4433"
+            server_fp = "<SHA-256 fingerprint from the relay log>"
+          Restart Airhand. The tray icon shows the 6-digit control code.
+          (server_fp may be "" to trust-on-first-use; pin it for real use.)
           EOF
           powershell -NoProfile -Command "Compress-Archive -Force -Path airhand.exe,PORTABLE-README.txt -DestinationPath '$ZIP'"
           echo "ASSET=$PWD/$ZIP" >> "$GITHUB_ENV"
