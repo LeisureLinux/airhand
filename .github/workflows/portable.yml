@@ -100,14 +100,14 @@ jobs:
           (server_fp may be "" to trust-on-first-use; pin it for real use.)
           EOF
           powershell -NoProfile -Command "Compress-Archive -Force -Path airhand.exe,PORTABLE-README.txt -DestinationPath '$ZIP'"
-          echo "ASSET=$PWD/$ZIP" >> "$GITHUB_ENV"
+          echo "packaged: $ZIP"
           ls -lh "$ZIP"
 
       - name: upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: airhand-portable-windows-x64
-          path: ${{ env.ASSET }}
+          path: client/src-tauri/target/release/Airhand-*-windows-x64-portable.zip
           if-no-files-found: error
 
   release:
