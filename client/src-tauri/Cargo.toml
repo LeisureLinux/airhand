@@ -13,6 +13,12 @@ default-run = "airhand"
 name = "airhand_lib"
 crate-type = ["rlib"]
 
+# portable: build a user-runnable release that hosts in the tray process
+# (no system service, no installer / admin rights). Weaker than the installed
+# service: no lock-screen / sign-in / UAC capture, but fine for desktop sessions.
+[features]
+portable = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 cc = "1"

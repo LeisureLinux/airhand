@@ -622,7 +622,10 @@ pub fn run() {
     // Windows：安装好的 Airhand 由系统服务运行被控端；发布版必须安装，调试构建直接运行时被控端在本进程里运行
     #[cfg(windows)]
     let service_mode = winsvc::installed_here();
-    #[cfg(all(windows, not(debug_assertions)))]
+    // Portable release (feature=portable) runs the host in-process like debug builds:
+    // no installer, no admin rights. The installed service remains the default for
+    // normal releases (lock screen / sign-in / UAC capture, auto-start at boot).
+    #[cfg(all(windows, not(debug_assertions), not(feature = "portable")))]
     if !service_mode {
         winsvc::show_not_installed();
         return;

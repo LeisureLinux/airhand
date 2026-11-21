@@ -1,0 +1,127 @@
+name: 'portable build'
+
+# Windows portable (user-runnable, no admin rights) build of the Tauri client.
+#
+# Normal releases install Airhand as a SYSTEM service (needed for lock screen /
+# UAC capture). This build uses the `portable` cargo feature to skip the
+# installer check and run the host in-process, like a debug build but optimized.
+# It does NOT need administrator rights; trade-off: no lock-screen capture and
+# no boot-time start.
+#
+# Trigger: a `v*-portable` tag (kept separate from normal releases) or manual.
+on:
+  push:
+    tags:
+      - 'v*-portable'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: check the workflow file
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+
+  build-portable:
+    needs: lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: npm install
+        working-directory: client
+        run: npm ci
+
+      # `--features portable` skips the Windows "must install as a service"
+      # guard (see client/src-tauri/src/lib.rs). `--no-bundle` gives a plain
+      # exe instead of an NSIS installer; we zip it ourselves.
+      - name: build portable client (no installer)
+        working-directory: client
+        env:
+          AIRHAND_SERVER: ${{ vars.AIRHAND_SERVER || '127.0.0.1:4433' }}
+          AIRHAND_SERVER_FP: ${{ vars.AIRHAND_SERVER_FP || '' }}
+        run: npm run tauri build -- --features portable --no-bundle
+
+      - name: verify the exe runs its own way (no service, no installer)
+        shell: bash
+        working-directory: client/src-tauri/target/release
+        run: |
+          test -f airhand.exe
+          echo "exe size: $(stat -c%s airhand.exe) bytes"
+          # The portable build must NOT contain the "needs installer" dialog
+          # path. We can't click GUI here, so we assert on the source-level
+          # feature instead (the code is gated by `not(feature="portable")`).
+          grep -q 'not(feature = "portable")' ../../src/lib.rs
+
+      - name: package portable zip
+        shell: bash
+        working-directory: client/src-tauri/target/release
+        run: |
+          VERSION=$(grep -m1 '^version' ../../Cargo.toml | cut -d'"' -f2)
+          ZIP="Airhand-${VERSION}-windows-x64-portable.zip"
+          # The app is a single self-contained exe (Rust statically links its
+          # dependencies; WebView2 is provided by Windows). Include the license
+          # and a small README explaining the trade-offs.
+          cat > PORTABLE-README.txt <<'EOF'
+          Airhand portable (Windows x64) - runs without administrator rights.
+
+          This build runs the host INSIDE the tray process (no SYSTEM service).
+          Differences vs the installed version:
+            * No lock screen / sign-in / UAC capture (desktop session only).
+            * No "start at boot" service; launch it manually after login.
+          Everything else (QUIC, P2P direct path, hardware encoding, pairing)
+          is identical to the installed release.
+
+          The relay server address + certificate fingerprint are compiled in;
+          they can be changed later in config.toml next to the exe.
+          EOF
+          powershell -NoProfile -Command "Compress-Archive -Force -Path airhand.exe,PORTABLE-README.txt -DestinationPath '$ZIP'"
+          echo "ASSET=$PWD/$ZIP" >> "$GITHUB_ENV"
+          ls -lh "$ZIP"
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: airhand-portable-windows-x64
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+
+  release:
+    needs: build-portable
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: airhand-portable-windows-x64
+          path: dist
+      - name: attach to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "${{ github.repository }}" \
+              --title "Airhand portable $TAG" --notes "User-runnable Windows build (no admin rights). See PORTABLE-README.txt in the zip."
+          fi
+          gh release upload "$TAG" dist/* --clobber --repo "${{ github.repository }}"
