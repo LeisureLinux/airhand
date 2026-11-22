@@ -657,7 +657,7 @@ pub fn run() {
     }
     #[cfg(not(windows))]
     let service_mode = false;
-    let Some(_instance) = single_instance::acquire() else {
+    let Some(instance) = single_instance::acquire() else {
         // 已经有一个实例在运行（托盘里），直接退出
         return;
     };
@@ -735,11 +735,6 @@ pub fn run() {
                 let h = handle.clone();
                 winsvc::watch_quit(move || h.exit(0));
             }
-            // 仅为当前用户安装：运行中别的用户为所有用户安装了 Airhand 的话，这一份也让开
-            #[cfg(windows)]
-            if user_install {
-                watch_service_installed(handle.clone());
-            }
             // 默认以被控端启动
             let hosting = if service_mode {
                 start_service_link(&handle, &hub)
@@ -791,6 +786,16 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("can't initialize Tauri");
+    // 单实例一直占到进程退出。仅为当前用户安装时交给下面的检查：运行中别的用户为所有用户安装了 Airhand 的话，
+    // 这一份让开，那时提前放开
+    #[cfg(windows)]
+    let instance = if user_install {
+        watch_service_installed(app.handle().clone(), instance);
+        None
+    } else {
+        Some(instance)
+    };
+    let _instance = instance;
     // macOS：和其它平台一样启动后只有托盘（菜单栏）图标，程序坞里没有图标；打开控制台时才显示。
     // 打包的 .app 在 Info.plist 里声明了 LSUIElement，这里是给直接运行的可执行文件用的
     #[cfg(target_os = "macos")]
@@ -863,9 +868,12 @@ fn start_service_link(app: &AppHandle, hub: &StatusHub) -> Hosting {
 }
 
 /// Windows 仅为当前用户安装：每隔一会儿看看这台电脑是不是（被别的用户）为所有用户安装了 Airhand。
-/// 装了的话先停下本进程里的被控端（不能两个被控端同时运行），再问用户要不要卸载这一份，然后退出
+/// 装了的话这一份让开（不能两个被控端同时运行），先把占着的、看得到的东西都放掉，再问用户要不要卸载这一份，然后退出：
+/// * 停下本进程里的被控端和控制端，不再写配置文件；
+/// * 关掉控制台、弹出窗口，拿掉托盘图标：被控端停了，菜单里的控制码、连接状态都不对了；
+/// * 放开单实例（`instance`）：问的时候为所有用户安装的那份托盘就能打开了（例如那边安装程序的完成页上点"运行 Airhand"）
 #[cfg(windows)]
-fn watch_service_installed(app: AppHandle) {
+fn watch_service_installed(app: AppHandle, instance: single_instance::Guard) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_secs(15));
@@ -874,12 +882,28 @@ fn watch_service_installed(app: AppHandle) {
             }
         }
         info!("Airhand got installed for all users, this copy steps aside");
+        // 关掉控制台时不要切回被控端（见 on_console_destroyed）
+        EXITING.store(true, Ordering::Release);
         {
             let state = app.state::<AppState>();
             let mut sv = state.services.lock().unwrap();
             sv.host = None;
             sv.controller = None;
         }
+        config::freeze();
+        // 窗口和托盘图标要在主线程上关，关完了再往下走（主线程卡住的话最多等几秒）
+        let (closed, wait) = std::sync::mpsc::channel();
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            popout::close_all(&handle);
+            if let Some(w) = handle.get_webview_window(CONSOLE) {
+                let _ = w.destroy();
+            }
+            tray::remove(&handle);
+            let _ = closed.send(());
+        });
+        let _ = wait.recv_timeout(Duration::from_secs(5));
+        instance.release();
         winsvc::user::step_aside();
         app.exit(0);
     });

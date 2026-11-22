@@ -660,9 +660,10 @@ pub fn keep_file() {
     }
 }
 
-/// 卸载（macOS 菜单里的"卸载 Airhand…"）：从现在起不再写配置文件，配置文件被删掉也不再重新生成。
-/// 还在运行的东西（例如正在停下来的被控端保存控制码）也写不回去。返回时，正在写的那一次已经写完
-#[cfg(target_os = "macos")]
+/// 卸载（macOS 菜单里的"卸载 Airhand…"）、Windows 仅为当前用户安装的那一份给为所有用户安装的那份让开时：
+/// 从现在起不再写配置文件，配置文件被删掉也不再重新生成。还在运行的东西（例如正在停下来的被控端保存控制码）
+/// 也写不回去。返回时，正在写的那一次已经写完
+#[cfg(any(target_os = "macos", windows))]
 pub fn freeze() {
     let _wait = last();
     FROZEN.store(true, std::sync::atomic::Ordering::Release);
