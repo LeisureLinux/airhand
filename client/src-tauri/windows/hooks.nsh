@@ -17,7 +17,8 @@
 ;   按 config.toml 设置登录时自动启动；config.toml 不存在时新建；
 ; * 升级：复制文件之前运行旧版本的 `airhand.exe --quit`，让托盘退出；
 ; * 卸载：运行 `airhand.exe --uninstall-user`：删除登录时自动启动和记下的安装位置、让托盘退出。
-; 两种方式卸载时都删除安装目录里程序运行时生成的文件（config.toml）、安装程序记下的注册表项、防火墙里为 airhand.exe 添加的规则。
+; 两种方式卸载时都删除安装目录里程序运行时生成的文件（config.toml）、安装程序和 Tauri 记下的注册表项和应用数据目录
+; （不管有没有勾选"删除应用程序数据"）、防火墙里为 airhand.exe 添加的规则。
 ;
 ; 升级时如果选择"先卸载旧版本"，旧版本的卸载程序由新的安装程序启动：安装程序启动时设置环境变量 AIRHAND_UPGRADE，
 ; 卸载程序继承了它，就保留 config.toml（控制码、服务器设置、控制台的"我的设备"）。直接卸载时没有这个变量，配置文件一起删除。
@@ -193,6 +194,14 @@ FunctionEnd
     DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
     DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
     DeleteRegKey /ifempty HKCU "${MANUKEY}"
+    ; 仅为我安装时记下的安装位置：PREUNINSTALL 的 --uninstall-user 已经删了；不分大小写时它和上面的 MANUKEY 是同一个键，这里不依赖这一点
+    DeleteRegValue HKCU "Software\Airhand" "UserInstall"
+    DeleteRegKey /ifempty HKCU "Software\Airhand"
+    ; Tauri 的应用数据目录（Tauri 同样只在勾选"删除应用程序数据"时删除；Airhand 不用它们，以防万一）。
+    ; 要在上面按 SHCTX 删完之后再切换到当前用户
+    SetShellVarContext current
+    RMDir /r "$APPDATA\${BUNDLEID}"
+    RMDir /r "$LOCALAPPDATA\${BUNDLEID}"
     ; 用户在 Windows 防火墙的提示里允许 airhand.exe 时系统添加的规则（仅为我安装时没有管理员权限的话删不掉，规则只对这个路径有效）
     nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name=all program="$INSTDIR\${MAINBINARYNAME}.exe"'
     Pop $0
