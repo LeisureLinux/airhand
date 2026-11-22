@@ -1,5 +1,5 @@
-//! 系统托盘：图标 + 右键菜单（模式、服务器状态、控制码、切换模式、开机自动启动 / macOS 的登录时自动启动、
-//! 语言、退出）。
+//! 系统托盘：图标 + 右键菜单（模式、服务器状态、控制码、切换模式、开机自动启动 / 登录时自动启动（macOS、
+//! Windows 仅为当前用户安装）、语言、退出）。
 
 use std::sync::OnceLock;
 
@@ -140,6 +140,17 @@ fn build_menu(app: &AppHandle, st: &AppStatus) -> tauri::Result<Menu<Wry>> {
         app,
         format!("Airhand  v{}", crate::config::VERSION),
     )?)?;
+    // Windows 仅为当前用户安装：说明做不到的事（为所有用户安装才行）
+    #[cfg(windows)]
+    if st.user_autostart.is_some() {
+        menu.append(&label(
+            app,
+            tr!(
+                "仅为当前用户安装：不能控制锁屏和 UAC",
+                "Installed just for you: no lock screen or UAC control"
+            ),
+        )?)?;
+    }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
     match st.service {
@@ -176,6 +187,17 @@ fn build_menu(app: &AppHandle, st: &AppStatus) -> tauri::Result<Menu<Wry>> {
             #[cfg(target_os = "macos")]
             if let Some(s) = st.login_item {
                 menu.append(&login_item_entry(app, s)?)?;
+            }
+            #[cfg(windows)]
+            if let Some(on) = st.user_autostart {
+                menu.append(&CheckMenuItem::with_id(
+                    app,
+                    "autostart",
+                    tr!("登录时自动启动", "Start when you sign in"),
+                    true,
+                    on,
+                    None::<&str>,
+                )?)?;
             }
         }
     }

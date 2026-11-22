@@ -2,8 +2,9 @@
 //!
 //! * 启动后默认是**被控端**：只有托盘图标，没有任何窗口；
 //! * 托盘菜单可切换为**控制端**：打开现代化控制台，可同时控制多台电脑；
-//! * Windows 需要安装：被控端作为系统服务运行（见 `winsvc`），托盘只负责显示和操作；
-//!   调试构建直接运行时被控端在本进程里运行。macOS / Linux 的被控端一直在本进程里运行；
+//! * Windows 需要安装：为所有用户安装时被控端作为系统服务运行（见 `winsvc`），托盘只负责显示和操作；
+//!   仅为当前用户安装时（见 `winsvc::user`）没有系统服务，和调试构建直接运行时一样，被控端在本进程里运行。
+//!   macOS / Linux 的被控端一直在本进程里运行；
 //! * macOS 的登录时自动启动是系统的登录项（见 [`login_item`]），第一次从"应用程序"文件夹运行时默认打开；
 //! * 配置和数据只有一个 `config.toml`（见 [`config`]）：服务器设置、本机的控制码、控制台的"我的设备"
 //!   （见 [`devices`]）。Windows 在安装目录，macOS 在 `~/Library/Application Support/app.airhand.client/`，
@@ -363,13 +364,31 @@ pub(crate) fn on_menu(app: &AppHandle, id: &str) {
         #[cfg(windows)]
         "autostart" => {
             let state = app.state::<AppState>();
-            let current = state.hub.borrow().service.map(|s| s.autostart);
-            if let (Some(current), Some(Hosting::Service(link))) =
-                (current, &state.services.lock().unwrap().host)
+            let (user, service) = {
+                let st = state.hub.borrow();
+                (st.user_autostart, st.service.map(|s| s.autostart))
+            };
+            if let Some(current) = user {
+                // 仅为当前用户安装：登录时自动启动是本用户的启动项，托盘自己改（先写配置文件：它为准）
+                let hub = state.hub.clone();
+                let on = !current;
+                std::thread::spawn(move || {
+                    match config::save_autostart(on)
+                        .and_then(|()| winsvc::user::apply_autostart(on))
+                    {
+                        Ok(()) => {
+                            info!(on, "autostart changed");
+                            hub.send_modify(|s| s.user_autostart = Some(on));
+                        }
+                        Err(e) => warn!("can't change autostart: {e:#}"),
+                    }
+                });
+            } else if let (Some(current), Some(Hosting::Service(link))) =
+                (service, &state.services.lock().unwrap().host)
             {
                 link.send(winsvc::ipc::ToAgent::SetAutostart { on: !current });
             }
-            // 勾选项被点击时系统会自动翻转勾选状态：重建菜单，以被控端确认后的设置为准
+            // 勾选项被点击时系统会自动翻转勾选状态：先按原来的设置重建菜单，改好了（被控端确认后）再刷新
             state.hub.send_modify(|_| {});
         }
         #[cfg(windows)]
@@ -615,23 +634,30 @@ pub fn run() {
         std::process::exit(code);
     }
     init_logging();
-    let Some(_instance) = single_instance::acquire() else {
-        // 已经有一个实例在运行（托盘里），直接退出
-        return;
-    };
-    // Windows：安装好的 Airhand 由系统服务运行被控端；发布版必须安装，调试构建直接运行时被控端在本进程里运行
+    // Windows：为所有用户安装的 Airhand 由系统服务运行被控端；仅为当前用户安装的（没有系统服务）和调试构建直接运行时
+    // 一样，被控端在本进程里运行。发布版没有安装时不能运行，提示运行安装程序
     #[cfg(windows)]
     let service_mode = winsvc::installed_here();
-    // Portable release (feature=portable) runs the host in-process like debug builds:
-    // no installer, no admin rights. The installed service remains the default for
-    // normal releases (lock screen / sign-in / UAC capture, auto-start at boot).
-    #[cfg(all(windows, not(debug_assertions), not(feature = "portable")))]
-    if !service_mode {
+    #[cfg(windows)]
+    let user_install = !service_mode && winsvc::user::installed_here();
+    #[cfg(all(windows, not(debug_assertions)))]
+    if !service_mode && !user_install {
         winsvc::show_not_installed();
+        return;
+    }
+    // 这台电脑还为所有用户安装了 Airhand：被控端在它的系统服务里运行，仅为当前用户安装的这一份不运行（否则两个被控端
+    // 同时运行）。在占用单实例之前检查：登录时两份一起启动的话，不能挡住为所有用户安装的那份托盘
+    #[cfg(windows)]
+    if user_install && winsvc::state() != winsvc::State::Missing {
+        winsvc::user::show_service_installed();
         return;
     }
     #[cfg(not(windows))]
     let service_mode = false;
+    let Some(_instance) = single_instance::acquire() else {
+        // 已经有一个实例在运行（托盘里），直接退出
+        return;
+    };
     // 配置文件由本进程维护（Windows 安装版由服务里的被控端维护，见 winsvc::agent）：
     // 不存在时按默认配置生成，运行中被删掉了也会重新生成
     if !service_mode {
@@ -640,6 +666,15 @@ pub fn run() {
         }
         config::keep_file();
     }
+    // 仅为当前用户安装：按 config.toml 设置登录时自动启动（手动改过配置文件的话以文件为准，也顺带更新程序的位置）
+    #[cfg(windows)]
+    let user_autostart = user_install.then(|| {
+        let on = config::settings().autostart;
+        if let Err(e) = winsvc::user::apply_autostart(on) {
+            warn!("can't apply the autostart setting: {e:#}");
+        }
+        on
+    });
     enable_dpi_awareness();
     // 先清理上次残留的目录，再创建本次的（同一个前缀）
     ephemeral::sweep_stale();
@@ -651,6 +686,8 @@ pub fn run() {
     ephemeral::isolate_caches();
 
     let hub = status::new_hub();
+    #[cfg(windows)]
+    hub.send_modify(|s| s.user_autostart = user_autostart);
     #[cfg(target_os = "macos")]
     clipfiles::macos::init(&hub);
     let app = tauri::Builder::default()
@@ -689,6 +726,12 @@ pub fn run() {
             }
             #[cfg(target_os = "linux")]
             exit_on_signals(handle.clone());
+            // Windows：被控端在本进程里时，安装包升级、卸载前会让托盘退出（见 winsvc::user）
+            #[cfg(windows)]
+            if !service_mode {
+                let h = handle.clone();
+                winsvc::user::watch_quit(move || h.exit(0));
+            }
             // 默认以被控端启动
             let hosting = if service_mode {
                 start_service_link(&handle, &hub)

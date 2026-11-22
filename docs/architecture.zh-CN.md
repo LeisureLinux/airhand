@@ -176,6 +176,9 @@ Windows 上这些都运行在系统服务里（见 [Windows 服务](#windows-服
 | `airhand.exe --service` | SYSTEM，会话 0 | 系统服务 Airhand：在控制台会话（物理屏幕前的那个会话）里启动被控端并看护它；控制台会话变了（切换用户、注销）就把它挪过去，退出了就重新启动 |
 | `airhand.exe --agent` | SYSTEM，控制台会话 | 被控端：连接服务器、采集、编码、注入键鼠、声音、剪贴板 |
 | `airhand.exe --install` / `--uninstall` / `--stop-service` | 管理员 | 安装程序调用 |
+| `airhand.exe --install-user` / `--uninstall-user` / `--quit` | 登录的用户 | 仅为当前用户安装时由安装程序调用：记下 / 删除安装位置和登录时自动启动，让托盘退出 |
+
+仅为当前用户安装时没有系统服务（`client/src-tauri/src/winsvc/user.rs`）：被控端和 macOS、Linux 一样在托盘进程里运行，所以下面说的安全桌面、命名管道都用不上，锁屏、登录界面和 UAC 确认框不能控制。
 
 - 桌面复制和 `SendInput` 只对调用线程所在的桌面有效。UAC 确认框、锁屏和登录界面在安全桌面 `Winlogon` 上，只有 SYSTEM 能打开；采集线程和注入线程在用之前先切到当前接收输入的桌面上（`client/src-tauri/src/host/desktop.rs`）
 - 托盘和被控端之间是每个会话一个的命名管道（`\\.\pipe\airhand-host-<会话>`），每行一条 JSON 消息。只有交互登录的用户能连接，不能再开一个同名管道实例冒充被控端，托盘还会核对管道属于 SYSTEM

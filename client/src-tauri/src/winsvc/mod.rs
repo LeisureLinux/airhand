@@ -1,6 +1,7 @@
 //! Windows 安装版：被控端作为系统服务运行。
 //!
-//! 安装包（NSIS，钩子见 `windows/hooks.nsh`）把 airhand.exe 装进 Program Files，然后运行 `airhand.exe --install`
+//! 安装包（NSIS，钩子见 `windows/hooks.nsh`）可以为所有用户安装，或者仅为当前用户安装（见 [`user`]：没有系统服务，
+//! 被控端在托盘进程里运行）。为所有用户安装时把 airhand.exe 装进 Program Files，然后运行 `airhand.exe --install`
 //! 注册系统服务 `Airhand`。同一个 airhand.exe 按命令行参数扮演不同的角色：
 //!
 //! | 参数 | 角色 | 身份 / 会话 |
@@ -9,6 +10,7 @@
 //! | `--service` | 系统服务：在控制台会话里启动被控端并看护它（[`service`]） | SYSTEM，会话 0 |
 //! | `--agent` | 被控端：连接服务器、采集画面和声音、注入键鼠、同步剪贴板（[`agent`]） | SYSTEM，控制台会话 |
 //! | `--install` / `--uninstall` / `--stop-service` | 安装、卸载、升级时由安装包调用 | 管理员 |
+//! | `--install-user` / `--uninstall-user` / `--quit` | 仅为当前用户安装时，安装、卸载、升级时由安装包调用（见 [`user`]） | 用户自己 |
 //!
 //! * 被控端以 SYSTEM 身份运行在用户的会话里，才能采集和操作 UAC 确认框、锁屏和登录界面（它们在安全桌面上，
 //!   见 `host::desktop`）。服务跟着"控制台会话"走：切换用户、注销时把被控端挪到新的控制台会话里；
@@ -25,6 +27,7 @@ mod agent;
 pub mod clip;
 pub mod ipc;
 mod service;
+pub mod user;
 
 /// 本进程是服务里的被控端（`--agent`，SYSTEM）
 static AGENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -104,6 +107,18 @@ pub fn cli() -> Option<i32> {
         "--stop-service" => {
             init_console_logging();
             stop_for_upgrade()
+        }
+        "--install-user" => {
+            init_console_logging();
+            user::install()
+        }
+        "--uninstall-user" => {
+            init_console_logging();
+            user::uninstall()
+        }
+        "--quit" => {
+            init_console_logging();
+            user::quit()
         }
         _ => return None,
     };
@@ -498,7 +513,7 @@ fn uninstall() -> Result<()> {
         info!("the Airhand service is removed");
     }
     set_run_key(false)?;
-    wait_for_other_instances(Duration::from_secs(8));
+    wait_for_other_instances(Duration::from_secs(8), true);
     Ok(())
 }
 
@@ -507,15 +522,17 @@ fn stop_for_upgrade() -> Result<()> {
     if let Some(svc) = open_service(SERVICE_STOP | SERVICE_QUERY_STATUS)? {
         stop_and_wait(&svc, Duration::from_secs(20))?;
     }
-    wait_for_other_instances(Duration::from_secs(8));
+    wait_for_other_instances(Duration::from_secs(8), true);
     Ok(())
 }
 
-/// 等同一个 airhand.exe 的其它进程（各个会话里的托盘、被控端）退出：服务停止后它们会自己退出
-fn wait_for_other_instances(timeout: Duration) {
+/// 等同一个 airhand.exe 的其它进程（各个会话里的托盘、被控端）退出：服务停止后它们会自己退出。
+/// `unknown_too`：看不到路径的 airhand.exe（别的用户、SYSTEM 的进程）也算上，宁可多等一会儿。
+/// 仅为当前用户安装时不算：要等的只是用户自己的托盘，看不到的是为所有用户安装的那份的服务
+fn wait_for_other_instances(timeout: Duration, unknown_too: bool) {
     let deadline = Instant::now() + timeout;
     loop {
-        let n = other_instances();
+        let n = other_instances(unknown_too);
         if n == 0 {
             return;
         }
@@ -527,7 +544,7 @@ fn wait_for_other_instances(timeout: Duration) {
     }
 }
 
-fn other_instances() -> usize {
+fn other_instances(unknown_too: bool) -> usize {
     let Ok(me) = std::env::current_exe() else {
         return 0;
     };
@@ -551,8 +568,7 @@ fn other_instances() -> usize {
             let name = String::from_utf16_lossy(&e.szExeFile[..len]).to_lowercase();
             if e.th32ProcessID != my_pid
                 && name == file_name
-                // 看不到路径（别的用户的进程）时也算上，宁可多等一会儿
-                && process_path(e.th32ProcessID).is_none_or(|p| same_file(&p, &me))
+                && process_path(e.th32ProcessID).map_or(unknown_too, |p| same_file(&p, &me))
             {
                 n += 1;
             }
@@ -583,8 +599,8 @@ fn process_path(pid: u32) -> Option<PathBuf> {
 pub fn show_not_installed() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
     let text = HSTRING::from(tr!(
-        "Airhand 需要安装后才能使用：请运行 Airhand 安装程序。\n\n安装后 Airhand 作为系统服务运行，锁屏、登录界面和 UAC 确认框也能被远程控制。",
-        "Airhand needs to be installed: please run the Airhand installer.\n\nOnce installed, Airhand runs as a system service, so the lock screen, the sign-in screen and UAC prompts can be controlled remotely too."
+        "Airhand 需要安装后才能使用：请运行 Airhand 安装程序。\n\n为所有用户安装时，Airhand 作为系统服务运行，锁屏、登录界面和 UAC 确认框也能被远程控制（需要管理员权限）。没有管理员权限也可以仅为自己安装，只是这些不能控制。",
+        "Airhand needs to be installed: please run the Airhand installer.\n\nInstalled for all users, Airhand runs as a system service, so the lock screen, the sign-in screen and UAC prompts can be controlled remotely too (needs administrator rights). Without administrator rights you can install it just for yourself, only those can't be controlled."
     ));
     unsafe {
         MessageBoxW(None, &text, w!("Airhand"), MB_OK | MB_ICONINFORMATION);

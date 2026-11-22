@@ -49,7 +49,7 @@ See [How it works → Video](docs/architecture.md#video) for details.
 
 | Platform | Host | Controller | Notes |
 |---|:-:|:-:|---|
-| Windows 10 / 11 | ✅ | ✅ | Installed; the host runs as a system service |
+| Windows 10 / 11 | ✅ | ✅ | Installed; for all users the host runs as a system service |
 | macOS 13+ | ✅ | ✅ | The host needs the Screen & System Audio Recording and Accessibility permissions |
 | Linux | ✅ | ✅ | The host supports X11 desktops only, with software encoding for now |
 | Android 7+ phones / tablets | ✅ | ✅ | Can only be watched until the accessibility service is turned on; the controller connects to one device at a time |
@@ -127,7 +127,7 @@ The server address and fingerprint can also be changed later in [`config.toml`](
 
 ### 3. Connect
 
-1. Install Airhand on both computers (on Windows run the installer, which needs administrator rights; on macOS grant the permissions it asks for the first time)
+1. Install Airhand on both computers (on Windows run the installer: installing for all users needs administrator rights, installing just for yourself doesn't but can't control the lock screen and UAC prompts; on macOS grant the permissions it asks for the first time)
 2. On the computer **to be controlled**, right-click the tray icon (on macOS, click the menu bar icon) to see its 6-digit **control code**
 3. On **your** computer, choose **Open console** from the tray menu (**Switch to controller** on macOS / Linux) and enter the code. The first time you connect to that computer, also enter the 6-digit **pairing code** from its tray menu; after that it isn't needed
 

@@ -176,6 +176,9 @@ The same `airhand.exe` plays several roles depending on its command line (`clien
 | `airhand.exe --service` | SYSTEM, session 0 | The Airhand service: starts the host in the console session (the one at the physical screen) and watches it; moves it when the console session changes (switching users, signing out) and restarts it if it exits |
 | `airhand.exe --agent` | SYSTEM, console session | The host: server connection, capture, encoding, input, audio, clipboard |
 | `airhand.exe --install` / `--uninstall` / `--stop-service` | administrator | Called by the installer |
+| `airhand.exe --install-user` / `--uninstall-user` / `--quit` | the signed-in user | Called by the installer when installing just for the current user: record / remove the install location and starting at sign-in, close the tray |
+
+Installed just for the current user there is no system service (`client/src-tauri/src/winsvc/user.rs`): the host runs inside the tray process like on macOS and Linux, so the secure desktop and named pipes below don't apply, and the lock screen, the sign-in screen and UAC prompts can't be controlled.
 
 - Desktop Duplication and `SendInput` only work on the desktop the calling thread is on. UAC prompts, the lock screen and the sign-in screen are on the secure `Winlogon` desktop, which only SYSTEM can open; the capture and input threads switch to whichever desktop currently receives input before using it (`client/src-tauri/src/host/desktop.rs`)
 - The tray and the host talk over a named pipe per session (`\\.\pipe\airhand-host-<session>`), one JSON message per line. Only interactive users can connect, they can't open another instance of the pipe to impersonate the host, and the tray checks that the pipe belongs to SYSTEM

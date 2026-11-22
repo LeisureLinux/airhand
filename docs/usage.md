@@ -26,13 +26,33 @@ After a network drop the host reconnects automatically with exponential backoff 
 
 ## Windows installation
 
-On Windows Airhand is installed with its installer (into `C:\Program Files\Airhand` for all users; needs administrator rights). The host runs as the system service **Airhand**, as SYSTEM in the session of whoever is at the screen, so it keeps working on the lock screen, the sign-in screen and UAC prompts, and follows when users are switched. The tray icon is an ordinary program that shows the service's status and controls it:
+On Windows Airhand is installed with its installer. Run from an administrator account, the installer lets you choose how to install; accounts without administrator rights can only install it just for themselves (the installer explains this first; to install for all users, right-click the installer and choose "Run as administrator"):
+
+| | For all users (recommended) | Just for me |
+|---|---|---|
+| Administrator rights | Needed | Not needed |
+| Installed into | `C:\Program Files\Airhand`, shared by all users | `%LOCALAPPDATA%\Programs\Airhand`, only for you |
+| Host | A system service: the lock screen, the sign-in screen and UAC prompts can be controlled too | Inside the tray process, running as you: the lock screen, the sign-in screen and UAC prompts can't be controlled, and windows running as administrator can only be viewed |
+| Starts automatically | With Windows, so the computer can be controlled before anyone signs in | When you sign in |
+
+### For all users
+
+The host runs as the system service **Airhand**, as SYSTEM in the session of whoever is at the screen, so it keeps working on the lock screen, the sign-in screen and UAC prompts, and follows when users are switched. The tray icon is an ordinary program that shows the service's status and controls it:
 
 - Opening Airhand starts the service; **Quit** in the tray stops it (as before, the computer can't be controlled after quitting); when the service stops (or is uninstalled) the tray icons close too
 - **Start with Windows** (tray menu, on by default): the service starts at boot, so the computer can be controlled before anyone signs in, and the tray icon appears after signing in
 - The configuration file `config.toml` is in the install directory (created on installation, see [Configuration file](#configuration-file)) and maintained by the service; edit it as administrator
 - **Uninstalling** (Settings → Apps) stops and removes the service, the startup entry, `config.toml` and the program; nothing is left behind (see [Uninstalling](#uninstalling)). Installing a new version over an old one keeps `config.toml`, and with it the control code and My devices, even if you choose to uninstall the old version first
-- A bare `airhand.exe` doesn't run without being installed: release builds ask you to run the installer. Debug builds (`npm run tauri dev`) run the host inside the tray process, like on macOS and Linux, with `config.toml` next to the program (`client/src-tauri/target/debug/`)
+
+### Just for me
+
+- The host runs inside the tray process, like on macOS and Linux: after **Quit** in the tray the computer can't be controlled. The top of the tray menu says "Installed just for you"
+- **Start when you sign in** (tray menu, on by default): Airhand starts by itself after you sign in
+- The configuration file `config.toml` is in the install directory too (see [Configuration file](#configuration-file)), maintained by the tray; you can edit it directly
+- Uninstalling and upgrading work the same as for all users (see [Uninstalling](#uninstalling))
+- If Airhand is also installed for all users on the computer, the copy installed just for you doesn't run (two hosts would run at the same time) and asks you to uninstall it when opened
+
+A bare `airhand.exe` doesn't run without being installed: release builds ask you to run the installer. Debug builds (`npm run tauri dev`) run the host inside the tray process, like on macOS and Linux, with `config.toml` next to the program (`client/src-tauri/target/debug/`)
 
 ## Configuration file
 
@@ -40,7 +60,7 @@ Everything Airhand saves is in one `config.toml` (with comments). The menu in th
 
 | System | Location |
 |---|---|
-| Windows | The install directory: `C:\Program Files\Airhand\config.toml` (next to the program for debug builds that aren't installed) |
+| Windows | The install directory: `C:\Program Files\Airhand\config.toml`, or `%LOCALAPPDATA%\Programs\Airhand\config.toml` when installed just for you (next to the program for debug builds that aren't installed) |
 | macOS | `~/Library/Application Support/app.airhand.client/config.toml` |
 | Linux | `$XDG_CONFIG_HOME/airhand/config.toml`, by default `~/.config/airhand/config.toml` |
 
@@ -49,8 +69,8 @@ Everything Airhand saves is in one `config.toml` (with comments). The menu in th
 | `server` | Relay server `host:port`; without it, the address built into the program |
 | `server_fp` | Relay certificate fingerprint; `""` means no fixed fingerprint: the server's certificate is remembered on the first connection (`[server_trust]`) and a different one is refused later; without it, the built-in fingerprint |
 | `[server_trust]` | Written by Airhand: the relay's certificate fingerprint remembered on the first connection (when no fingerprint is set). Delete it if the relay really gets a new certificate |
-| `autostart` | Windows: start with Windows (also in the tray menu). macOS: a record of Open at login; System Settings is what counts, so editing only this line has no effect. Without it, Open at login hasn't been turned on by default yet (see above) |
-| `language` | UI language, `"zh"` or `"en"`: written when you pick one in the tray menu or the console (see [Language](#language)). Without it, the system language. On Windows it applies to every account on the computer (the file is shared) |
+| `autostart` | Windows: start with Windows, or when you sign in when installed just for you (also in the tray menu). macOS: a record of Open at login; System Settings is what counts, so editing only this line has no effect. Without it, Open at login hasn't been turned on by default yet (see above) |
+| `language` | UI language, `"zh"` or `"en"`: written when you pick one in the tray menu or the console (see [Language](#language)). Without it, the system language. On Windows installed for all users it applies to every account on the computer (the file is shared) |
 | `[code]` | This computer's control code, and the secret that gets it back. Delete `code` and `secret` to get a new code |
 | `[host]` | Maintained by Airhand: this computer's end-to-end identity as a host (`key`), the pairing code and whether pairing is paused, all stored encrypted. Deleting `key` creates a new identity: controllers that connected before will warn that this computer's identity changed |
 | `[[paired]]` | Maintained by Airhand: paired controllers (public key, name, when they paired); they connect without the pairing code. Delete an entry to forget that controller |
@@ -59,7 +79,7 @@ Everything Airhand saves is in one `config.toml` (with comments). The menu in th
 
 - Restart Airhand after changing settings (Quit, then open it again). Airhand keeps your edits and comments when it saves the code or devices
 - **Deleted by accident** (the file or the whole directory): it's recreated with the default settings at startup, and within a few seconds while running. This computer's control code, the autostart setting (on macOS, the record of Open at login), the UI language, the end-to-end identities, the paired controllers and My devices carry over from before the deletion, so nothing is lost; other settings go back to their defaults
-- A control code is enough to control its computer, so treat it like a key. On macOS / Linux only your account can read and write the file (mode 600, directory 700). On Windows the file is in the install directory, readable by every account on the computer: this computer's secret is encrypted with DPAPI for the SYSTEM account, and the codes in My devices with the Windows account that saved them, so other accounts and other computers can't read them (each account on the same computer only sees its own devices)
+- A control code is enough to control its computer, so treat it like a key. On macOS / Linux only your account can read and write the file (mode 600, directory 700). On Windows the file is in the install directory, readable by every account on the computer when installed for all users: this computer's secret is encrypted with DPAPI for the SYSTEM account (your account when installed just for you), and the codes in My devices with the Windows account that saved them, so other accounts and other computers can't read them (each account on the same computer only sees its own devices)
 - Windows removes it when uninstalling; on macOS / Linux it stays after the program is removed (as is customary there), so remove it too, see [Uninstalling](#uninstalling)
 
 ## Uninstalling
@@ -68,7 +88,7 @@ After these steps nothing of Airhand is left on the computer (except two things 
 
 ### Windows
 
-Settings → Apps → Airhand → Uninstall. The uninstaller stops and removes the Airhand service and the startup entry, and deletes the install directory (including `config.toml`), the registry keys the installer wrote, the Windows Firewall rules added for `airhand.exe`, and the console's temporary directories. Nothing else to do by hand.
+Settings → Apps → Airhand → Uninstall. The uninstaller stops and removes the Airhand service (when installed just for you, it closes the tray instead) and the startup entry, and deletes the install directory (including `config.toml`), the registry keys the installer wrote, the Windows Firewall rules added for `airhand.exe`, and the console's temporary directories. Nothing else to do by hand.
 
 (Choosing "uninstall the old version first" during an upgrade isn't an uninstall: `config.toml` is kept, see [Windows installation](#windows-installation).)
 
