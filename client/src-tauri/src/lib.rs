@@ -645,11 +645,11 @@ pub fn run() {
         winsvc::show_not_installed();
         return;
     }
-    // 这台电脑还为所有用户安装了 Airhand：被控端在它的系统服务里运行，仅为当前用户安装的这一份不运行（否则两个被控端
-    // 同时运行）。在占用单实例之前检查：登录时两份一起启动的话，不能挡住为所有用户安装的那份托盘
+    // 这台电脑（被别的用户）为所有用户安装了 Airhand：被控端在它的系统服务里运行，仅为当前用户安装的这一份让开
+    // （否则两个被控端同时运行）。在占用单实例之前检查：登录时两份一起启动的话，不能挡住为所有用户安装的那份托盘
     #[cfg(windows)]
-    if user_install && winsvc::state() != winsvc::State::Missing {
-        winsvc::user::show_service_installed();
+    if user_install && winsvc::service_present() {
+        winsvc::user::step_aside();
         return;
     }
     #[cfg(not(windows))]
@@ -726,11 +726,16 @@ pub fn run() {
             }
             #[cfg(target_os = "linux")]
             exit_on_signals(handle.clone());
-            // Windows：被控端在本进程里时，安装包升级、卸载前会让托盘退出（见 winsvc::user）
+            // Windows：安装包升级、卸载这一份 Airhand 时让托盘退出（见 winsvc::watch_quit）
             #[cfg(windows)]
-            if !service_mode {
+            {
                 let h = handle.clone();
-                winsvc::user::watch_quit(move || h.exit(0));
+                winsvc::watch_quit(move || h.exit(0));
+            }
+            // 仅为当前用户安装：运行中别的用户为所有用户安装了 Airhand 的话，这一份也让开
+            #[cfg(windows)]
+            if user_install {
+                watch_service_installed(handle.clone());
             }
             // 默认以被控端启动
             let hosting = if service_mode {
@@ -852,6 +857,29 @@ fn start_service_link(app: &AppHandle, hub: &StatusHub) -> Hosting {
     Hosting::Service(winsvc::ipc::AgentLink::start(hub.clone(), move || {
         app.exit(0)
     }))
+}
+
+/// Windows 仅为当前用户安装：每隔一会儿看看这台电脑是不是（被别的用户）为所有用户安装了 Airhand。
+/// 装了的话先停下本进程里的被控端（不能两个被控端同时运行），再问用户要不要卸载这一份，然后退出
+#[cfg(windows)]
+fn watch_service_installed(app: AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_secs(15));
+            if winsvc::service_present() {
+                break;
+            }
+        }
+        info!("Airhand got installed for all users, this copy steps aside");
+        {
+            let state = app.state::<AppState>();
+            let mut sv = state.services.lock().unwrap();
+            sv.host = None;
+            sv.controller = None;
+        }
+        winsvc::user::step_aside();
+        app.exit(0);
+    });
 }
 
 #[cfg(not(windows))]

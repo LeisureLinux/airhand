@@ -175,10 +175,10 @@ Windows 上这些都运行在系统服务里（见 [Windows 服务](#windows-服
 | `airhand.exe` | 登录的用户 | 托盘和控制台 |
 | `airhand.exe --service` | SYSTEM，会话 0 | 系统服务 Airhand：在控制台会话（物理屏幕前的那个会话）里启动被控端并看护它；控制台会话变了（切换用户、注销）就把它挪过去，退出了就重新启动 |
 | `airhand.exe --agent` | SYSTEM，控制台会话 | 被控端：连接服务器、采集、编码、注入键鼠、声音、剪贴板 |
-| `airhand.exe --install` / `--uninstall` / `--stop-service` | 管理员 | 安装程序调用 |
-| `airhand.exe --install-user` / `--uninstall-user` / `--quit` | 登录的用户 | 仅为当前用户安装时由安装程序调用：记下 / 删除安装位置和登录时自动启动，让托盘退出 |
+| `airhand.exe --install` / `--install-user` | 管理员 / 登录的用户 | 安装程序复制完文件后调用：为所有用户安装时注册并启动服务，仅为当前用户安装时记下安装位置；都按 `config.toml` 设置自动启动 |
+| `airhand.exe --stop` / `--uninstall` | 安装程序的身份 | 升级前停下这一份 Airhand（服务、托盘）；卸载时删除这一份注册的东西。只动属于这个 airhand.exe 的东西，两种安装方式通用 |
 
-仅为当前用户安装时没有系统服务（`client/src-tauri/src/winsvc/user.rs`）：被控端和 macOS、Linux 一样在托盘进程里运行，所以下面说的安全桌面、命名管道都用不上，锁屏、登录界面和 UAC 确认框不能控制。
+仅为当前用户安装时没有系统服务（`client/src-tauri/src/winsvc/user.rs`）：被控端和 macOS、Linux 一样在托盘进程里运行，所以下面说的安全桌面、命名管道都用不上，锁屏、登录界面和 UAC 确认框不能控制。一台电脑上只该有一份 Airhand 运行被控端：安装程序按已有的安装升级（`client/src-tauri/windows/hooks.nsh`），别的用户为所有用户安装之后，仅为当前用户安装的那份让开。托盘在命名事件 `Local\Airhand.Quit` 上等着被叫退出，安装程序也看它在不在，决定升级后要不要重新打开托盘。
 
 - 桌面复制和 `SendInput` 只对调用线程所在的桌面有效。UAC 确认框、锁屏和登录界面在安全桌面 `Winlogon` 上，只有 SYSTEM 能打开；采集线程和注入线程在用之前先切到当前接收输入的桌面上（`client/src-tauri/src/host/desktop.rs`）
 - 托盘和被控端之间是每个会话一个的命名管道（`\\.\pipe\airhand-host-<会话>`），每行一条 JSON 消息。只有交互登录的用户能连接，不能再开一个同名管道实例冒充被控端，托盘还会核对管道属于 SYSTEM

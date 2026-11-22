@@ -97,7 +97,7 @@ cargo run --release --example encode_bench
 ```powershell
 # client/src-tauri/
 target\release\airhand.exe --install       # 为这个 airhand.exe 注册并启动服务（在它旁边生成 config.toml）
-target\release\airhand.exe --stop-service  # 重新构建之前先停止：exe 正在使用
+target\release\airhand.exe --stop          # 重新构建之前先停止服务和托盘：exe 正在使用
 target\release\airhand.exe --uninstall     # 删除服务和开机启动项
 ```
 

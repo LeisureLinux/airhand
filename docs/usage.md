@@ -26,7 +26,7 @@ After a network drop the host reconnects automatically with exponential backoff 
 
 ## Windows installation
 
-On Windows Airhand is installed with its installer. Run from an administrator account, the installer lets you choose how to install; accounts without administrator rights can only install it just for themselves (the installer explains this first; to install for all users, right-click the installer and choose "Run as administrator"):
+On Windows Airhand is installed with its installer, either for all users or just for you:
 
 | | For all users (recommended) | Just for me |
 |---|---|---|
@@ -34,6 +34,11 @@ On Windows Airhand is installed with its installer. Run from an administrator ac
 | Installed into | `C:\Program Files\Airhand`, shared by all users | `%LOCALAPPDATA%\Programs\Airhand`, only for you |
 | Host | A system service: the lock screen, the sign-in screen and UAC prompts can be controlled too | Inside the tray process, running as you: the lock screen, the sign-in screen and UAC prompts can't be controlled, and windows running as administrator can only be viewed |
 | Starts automatically | With Windows, so the computer can be controlled before anyone signs in | When you sign in |
+| Install folder | Only inside Program Files: the service runs the program there as SYSTEM, and elsewhere ordinary users might be able to change it | Not inside Program Files or the Windows folder: settings are saved next to the program |
+
+- **First install**: administrator accounts choose in the installer (for all users by default). For other accounts the installer asks first: Yes runs it again as administrator (you'll need an administrator password) to install for all users; No installs just for you
+- **Upgrading, reinstalling**: the installer keeps the way Airhand was installed and doesn't ask again. The copy installed for all users needs administrator rights; other accounts get an explanation and then a prompt for an administrator password. If the tray was open before the upgrade, it opens again afterwards (when you upgrade someone's computer remotely, the connection comes back)
+- **Switching between the two**: uninstall first, then install again
 
 ### For all users
 
@@ -50,7 +55,7 @@ The host runs as the system service **Airhand**, as SYSTEM in the session of who
 - **Start when you sign in** (tray menu, on by default): Airhand starts by itself after you sign in
 - The configuration file `config.toml` is in the install directory too (see [Configuration file](#configuration-file)), maintained by the tray; you can edit it directly
 - Uninstalling and upgrading work the same as for all users (see [Uninstalling](#uninstalling))
-- If Airhand is also installed for all users on the computer, the copy installed just for you doesn't run (two hosts would run at the same time) and asks you to uninstall it when opened
+- If someone else then installs Airhand for all users, the copy installed just for you stops running (two hosts would run at the same time) and no longer starts when you sign in, and asks whether to uninstall it. This also happens while it's running: its host stops as soon as it notices
 
 A bare `airhand.exe` doesn't run without being installed: release builds ask you to run the installer. Debug builds (`npm run tauri dev`) run the host inside the tray process, like on macOS and Linux, with `config.toml` next to the program (`client/src-tauri/target/debug/`)
 

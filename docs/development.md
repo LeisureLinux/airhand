@@ -97,7 +97,7 @@ Debug builds run the host inside the tray process, so `npm run tauri dev` needs 
 ```powershell
 # client/src-tauri/
 target\release\airhand.exe --install       # register and start the service for this airhand.exe (creates config.toml next to it)
-target\release\airhand.exe --stop-service  # stop it before rebuilding: the exe is in use
+target\release\airhand.exe --stop          # stop the service and the tray before rebuilding: the exe is in use
 target\release\airhand.exe --uninstall     # remove the service and the startup entry
 ```
 
