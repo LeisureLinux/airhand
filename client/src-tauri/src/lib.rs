@@ -1,7 +1,8 @@
 //! Airhand 客户端：同一个二进制既是被控端也是控制端。
 //!
 //! * 启动后默认是**被控端**：只有托盘图标，没有任何窗口；
-//! * 托盘菜单可切换为**控制端**：打开现代化控制台，可同时控制多台电脑；
+//! * 托盘菜单可切换为**控制端**：打开现代化控制台，可同时控制多台电脑。Windows 上打开控制台时被控端照常运行，
+//!   macOS / Linux 上被控端暂停、关掉控制台再恢复（见 [`status::HOST_WITH_CONSOLE`]）；
 //! * Windows 需要安装：为所有用户安装时被控端作为系统服务运行（见 `winsvc`），托盘只负责显示和操作；
 //!   仅为当前用户安装时（见 `winsvc::user`）没有系统服务，和调试构建直接运行时一样，被控端在本进程里运行。
 //!   macOS / Linux 的被控端一直在本进程里运行；
@@ -126,28 +127,30 @@ impl Hosting {
 
 // ───────────────────────────── 模式切换 ─────────────────────────────
 
-/// 切换后台服务（不涉及窗口）。被控端在系统服务里运行时（Windows 安装版）只启停控制端。
+/// 切换后台服务（不涉及窗口）。Windows 上被控端一直运行（系统服务里，或者本进程里，见
+/// [`status::HOST_WITH_CONSOLE`]），只启停控制端；macOS / Linux 上本进程里的被控端和控制端轮流运行。
 fn switch_services(app: &AppHandle, mode: Mode) {
     let state = app.state::<AppState>();
     let current = state.hub.borrow().mode;
     if current != mode {
         info!(?mode, "switching mode");
-        let in_process = !state.service_mode;
+        // 被控端跟着模式启停（打开控制台时停下）
+        let host_follows = !status::HOST_WITH_CONSOLE;
         let mut sv = state.services.lock().unwrap();
         // 先停止旧服务（Drop 即中止并断开连接），再启动新服务
         sv.controller = None;
-        if in_process {
+        if host_follows {
             sv.host = None;
         }
         state.hub.send_modify(|s| {
             s.mode = mode;
             s.controller = ServerState::Connecting;
-            if in_process {
+            if host_follows {
                 s.host = HostStatus::default();
             }
         });
         match mode {
-            Mode::Host if in_process => {
+            Mode::Host if host_follows => {
                 sv.host = Some(Hosting::InProcess(HostService::start(state.hub.clone())));
                 #[cfg(target_os = "macos")]
                 host::macos::request_permissions();

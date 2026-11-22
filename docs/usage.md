@@ -6,13 +6,13 @@
 
 Double-click to run (on Windows install it first, see [Windows installation](#windows-installation)). A tray icon appears in the bottom-right corner (on macOS in the menu bar at the top of the screen, on Linux in the top bar / panel status area). Grey means not connected to the server, coloured means connected. The right-click menu (a plain click on macOS) contains:
 
-- Current mode and server status
+- Server status (and the current mode on macOS and Linux)
 - The **control code** and "Copy control code"
 - The **pairing code**, "Copy pairing code" and **Change pairing code**: a controller that hasn't paired with this computer needs it, besides the control code, the first time it connects (see "Pairing" below)
 - Who is controlling this computer right now (with the **safety code** after each connection), and **Disconnect all controllers**
 - **Change control code**: the old code stops working immediately and connected controllers are disconnected; the pairing code changes too and all paired controllers are forgotten
 - **Forget paired controllers**: they'll need the pairing code again
-- Open console and **Start with Windows** (Windows) / Switch to controller (macOS, Linux) and **Open at login** (macOS) / Language / **Uninstall Airhand…** (macOS, see [Uninstalling](#uninstalling)) / Quit
+- Open console and **Start with Windows** (Windows; **Start when you sign in** when installed just for you) / Switch to controller (macOS, Linux) and **Open at login** (macOS) / Language / **Uninstall Airhand…** (macOS, see [Uninstalling](#uninstalling)) / Quit
 
 After a network drop the host reconnects automatically with exponential backoff and **gets its old control code back**, even after a server restart. The code is **fixed**: it's saved in `config.toml`, and the server keeps it for this computer however long it stays offline (codes unused for 180 days are released), so it stays the same across restarts and upgrades until you change it.
 
@@ -51,7 +51,7 @@ The host runs as the system service **Airhand**, as SYSTEM in the session of who
 
 ### Just for me
 
-- The host runs inside the tray process, like on macOS and Linux: after **Quit** in the tray the computer can't be controlled. The top of the tray menu says "Installed just for you"
+- The host runs inside the tray process: after **Quit** in the tray the computer can't be controlled, but it keeps running while the console is open, the same as when installed for all users. The top of the tray menu says "Installed just for you"
 - **Start when you sign in** (tray menu, on by default): Airhand starts by itself after you sign in
 - The configuration file `config.toml` is in the install directory too (see [Configuration file](#configuration-file)), maintained by the tray; you can edit it directly
 - Uninstalling and upgrading work the same as for all users (see [Uninstalling](#uninstalling))
@@ -184,7 +184,7 @@ Uninstall the app in the system: the settings, saved devices and this phone's co
 
 ## Controller
 
-Tray → **Switch to controller** opens the console. Closing the console window switches back to host mode. On Windows, double-click the Airhand tray icon or choose **Open console** from its menu. If the console is already open, double-clicking brings it to the front. The installed host service keeps running while the console is open.
+Tray → **Switch to controller** opens the console. Closing the console window switches back to host mode. On Windows, double-click the Airhand tray icon or choose **Open console** from its menu. If the console is already open, double-clicking brings it to the front. On Windows the host keeps running while the console is open (whether installed for all users or just for you), so the computer can still be controlled; on macOS and Linux switching to controller pauses the host until the console is closed.
 
 - It works like a browser: each computer gets a **tab** that you can drag to reorder and close (= disconnect) with × or a middle click. Click **+** for a new connection, enter the 6-digit control code (pasting `123 456` works), and once connected that tab becomes the computer. With two or more connections a **Multi-screen overview** tab appears on the left
 - **First connection to a computer or phone**: it asks for a pairing code (every host does), and the new-connection page shows a "Pairing code" field: enter the 6-digit pairing code shown there (a computer's tray menu, a phone's Share screen tab in Airhand) and connect again (or paste all 12 digits at once: control code + pairing code). Once paired, it remembers this console

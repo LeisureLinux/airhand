@@ -11,11 +11,16 @@ use tokio::sync::watch;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// 被控端（默认）。Windows 安装版的被控端一直在系统服务里运行，这里只表示控制台没有打开
+    /// 被控端（默认）：控制台没有打开。Windows 上被控端一直在运行（见 [`HOST_WITH_CONSOLE`]），这里只表示控制台没有打开
     Host,
     /// 控制端（控制台打开着）
     Controller,
 }
+
+/// 打开控制台（控制端模式）时被控端照常运行，本机照样能被控制：Windows 上被控端不管在系统服务里
+/// （为所有用户安装）还是在本进程里（仅为当前用户安装、调试构建）都一直运行，模式只表示控制台开没开。
+/// macOS / Linux 上本进程里的被控端和控制端轮流运行：打开控制台时被控端停下，关掉控制台再启动
+pub const HOST_WITH_CONSOLE: bool = cfg!(windows);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppStatus {
@@ -52,9 +57,9 @@ impl Default for AppStatus {
 }
 
 impl AppStatus {
-    /// 托盘要不要显示被控端的状态：被控端在服务里运行时一直显示，在本进程里运行时只在被控端模式显示
+    /// 托盘要不要显示被控端的状态：被控端一直运行时（Windows）一直显示，否则只在被控端模式显示
     pub fn shows_host(&self) -> bool {
-        self.service.is_some() || self.mode == Mode::Host
+        HOST_WITH_CONSOLE || self.mode == Mode::Host
     }
 }
 
